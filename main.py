@@ -7,10 +7,14 @@ from pytz import timezone
 from collections import defaultdict
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
+import logging
 
 # .envファイルから環境変数をロード
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
+
+# ログ設定
+logging.basicConfig(level=logging.INFO)
 
 intents = discord.Intents.default()
 intents.messages = True
@@ -97,15 +101,22 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b"Bot is running!")
 
+# HTTPサーバーを別スレッドで起動
 def run_server():
     server = HTTPServer(('0.0.0.0', 8080), Handler)
     print("Starting HTTP server on port 8080...")
-    server.serve_forever()
+    try:
+        server.serve_forever()
+    except Exception as e:
+        logging.error(f"HTTP server error: {e}")
+        server.shutdown()
 
-# HTTPサーバーを別スレッドで起動
-    thread = threading.Thread(target=run_server)
-    thread.daemon = True
-    thread.start()
+# メインスレッドでDiscordボットを起動し、別スレッドでHTTPサーバーを実行
+if __name__ == "__main__":
+    # HTTPサーバーを別スレッドで実行
+    server_thread = threading.Thread(target=run_server)
+    server_thread.daemon = True  # メインスレッドが終了してもサーバーは終了する
+    server_thread.start()
 
-bot.run(TOKEN)
-
+    # Discordボットを実行
+    bot.run(TOKEN)
