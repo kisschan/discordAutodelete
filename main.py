@@ -4,6 +4,7 @@ import os
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from pytz import timezone
+from collections import defaultdict
 
 # .envファイルから環境変数をロード
 load_dotenv()
@@ -15,9 +16,6 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-delete_interval = 60  # デフォルトで1時間（60分）おきにチェック
-delete_cutoff_minutes = 720  # デフォルトで12時間前のメッセージを削除対象
-
 # JSTのタイムゾーンを定義
 JST = timezone('Asia/Tokyo')
 
@@ -26,47 +24,45 @@ async def on_ready():
     print(f'Logged in as {bot.user.name}')
     check_old_messages.start()
 
-@tasks.loop(minutes=delete_interval)
-async def check_old_messages():
-    print(f"Checking messages at {datetime.utcnow()} UTC")
-    now = datetime.utcnow().replace(tzinfo=timezone('UTC')).astimezone(JST)
-    cutoff = now - timedelta(minutes=delete_cutoff_minutes)
-
-    for guild in bot.guilds:
-        for channel in guild.text_channels:
-            try:
-                messages = []
-                async for message in channel.history(before=cutoff):
-                    messages.append(message)
-                print(f"Found {len(messages)} messages to delete at {channel.name}.")
-                for message in messages:
-                    print(f"Attempting to delete message from {message.author}: {message.content}")
-                    await message.delete()
-                    print(f"Deleted message from {message.author}: {message.content}")
-            except discord.Forbidden:
-                print(f"Can't delete messages in {channel.name} due to lack of permissions.")
-            except discord.HTTPException as e:
-                print(f"Failed to delete message in {channel.name}: {e}")
+# チャンネルごとの設定を保存する辞書
+channel_settings = defaultdict(lambda: {"delete_interval": 5, "delete_cutoff_minutes": 10})
 
 @bot.command()
 async def set_interval(ctx, minutes: int):
     """メッセージの削除間隔を設定します。"""
-    global delete_interval
-    delete_interval = minutes
+    channel_id = ctx.channel.id
+    channel_settings[channel_id]["delete_interval"] = minutes
+
     if check_old_messages.is_running():
-        check_old_messages.change_interval(minutes=delete_interval)
-        await ctx.send(f"メッセージの削除間隔を {minutes} 分に変更しました。")
+        check_old_messages.change_interval(minutes=minutes)
+        await ctx.send(f"{ctx.channel.name} チャンネルのメッセージ削除間隔を {minutes} 分に変更しました。")
     else:
-        check_old_messages.change_interval(minutes=delete_interval)
         check_old_messages.start()
-        await ctx.send(f"メッセージの削除間隔を {minutes} 分に設定しました。")
+        await ctx.send(f"{ctx.channel.name} チャンネルのメッセージ削除間隔を {minutes} 分に設定しました。")
 
 @bot.command()
 async def set_cutoff_minutes(ctx, minutes: int):
     """削除対象のメッセージが何分前のものか設定します。"""
-    global delete_cutoff_minutes
-    delete_cutoff_minutes = minutes
-    await ctx.send(f"削除対象を {delete_cutoff_minutes} 分以上前のメッセージに設定しました。")
+    channel_id = ctx.channel.id
+    channel_settings[channel_id]["delete_cutoff_minutes"] = minutes
+    await ctx.send(f"{ctx.channel.name} チャンネルの削除対象を {minutes} 分以上前のメッセージに設定しました。")
+
+@tasks.loop(minutes=1)
+async def check_old_messages():
+    """各チャンネルの設定に基づき古いメッセージを削除します。"""
+    for channel_id, settings in channel_settings.items():
+        delete_interval = settings["delete_interval"]
+        delete_cutoff_minutes = settings["delete_cutoff_minutes"]
+
+        channel = bot.get_channel(channel_id)
+        if not channel:
+            continue
+
+        # 削除対象のメッセージを取得し、削除
+        cutoff_time = discord.utils.utcnow() - timedelta(minutes=delete_cutoff_minutes)
+        async for message in channel.history(limit=100):
+            if message.created_at < cutoff_time:
+                await message.delete()
 
 @bot.command()
 async def delete_messages_before(ctx, channel_id: int, minutes: int):
