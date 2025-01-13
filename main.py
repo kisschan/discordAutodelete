@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from pytz import timezone
 from collections import defaultdict
 from http.server import HTTPServer, BaseHTTPRequestHandler
+import threading
 
 # .envファイルから環境変数をロード
 load_dotenv()
@@ -102,9 +103,9 @@ def run_server():
     server.serve_forever()
 
 # HTTPサーバーを別スレッドで起動
-thread = threading.Thread(target=run_server)
-thread.daemon = True
-thread.start()
+    thread = threading.Thread(target=run_server)
+    thread.daemon = True
+    thread.start()
 
 bot.run(TOKEN)
 
