@@ -1,0 +1,4 @@
+python-dotenv==1.0.1
+pytz==2024.2
+yarl==1.18.3
+discord.py==2.4.0
