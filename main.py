@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from pytz import timezone
 from collections import defaultdict
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 # .envファイルから環境変数をロード
 load_dotenv()
@@ -87,6 +88,23 @@ async def delete_messages_before(ctx, channel_id: int, minutes: int):
             await ctx.send(f"メッセージを削除する権限がありません。")
         except discord.HTTPException as e:
             await ctx.send(f"メッセージの削除に失敗しました: {e}")
+
+# ダミーのHTTPサーバー
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is running!")
+
+def run_server():
+    server = HTTPServer(('0.0.0.0', 8080), Handler)
+    print("Starting HTTP server on port 8080...")
+    server.serve_forever()
+
+# HTTPサーバーを別スレッドで起動
+thread = threading.Thread(target=run_server)
+thread.daemon = True
+thread.start()
 
 bot.run(TOKEN)
 
