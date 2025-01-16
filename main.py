@@ -67,7 +67,7 @@ async def check_old_messages():
         # 削除対象のメッセージを取得し、削除
         cutoff_time = discord.utils.utcnow() - timedelta(minutes=delete_cutoff_minutes)
         async for message in channel.history(limit=100):
-            if message.created_at < cutoff_time:
+            if message.created_at < cutoff_time and any(att.content_type.startswith("image/") for att in message.attachments):
                 await message.delete()
 
 @bot.command()
